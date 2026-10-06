@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>画像 → ICO 変換ツール</title>
+<link id="favicon" rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #222;
+    --muted: #666;
+    --accent: #3b6ef5;
+    --accent-dark: #2a55c9;
+    --border: #dde2ee;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--accent);
+    color: #fff;
+    padding: 18px 24px;
+  }
+  header h1 { margin: 0; font-size: 1.3rem; }
+  header p { margin: 4px 0 0; font-size: 0.85rem; opacity: 0.9; }
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 820px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .card h2 {
+    font-size: 1rem;
+    margin: 0 0 12px;
+  }
+  #dropzone {
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    padding: 28px 12px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--muted);
+    transition: background 0.2s;
+  }
+  #dropzone.over { background: #e8eefe; }
+  #dropzone strong { color: var(--accent); }
+  #sourceInfo {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    word-break: break-all;
+  }
+  #sourcePreview {
+    display: none;
+    max-width: 100%;
+    max-height: 160px;
+    margin: 10px auto 0;
+  }
+  .checker {
+    background: conic-gradient(#d6d6d6 25%, #fff 0 50%, #d6d6d6 0 75%, #fff 0) 0 0 / 12px 12px;
+  }
+  .field { margin-bottom: 14px; }
+  .field > label.title {
+    display: block;
+    font-weight: 600;
+    font-size: 0.88rem;
+    margin-bottom: 6px;
+  }
+  .sizes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px 8px;
+    font-size: 0.88rem;
+  }
+  .row { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; flex-wrap: wrap; }
+  select, input[type="text"] {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+  input[type="text"] { width: 100%; }
+  input[type="range"] { flex: 1; }
+  .small-btn {
+    font-size: 0.78rem;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    background: #f7f8fc;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .small-btn:hover { background: #eceff8; }
+  #downloadBtn {
+    width: 100%;
+    padding: 12px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--accent);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  #downloadBtn:hover:not(:disabled) { background: var(--accent-dark); }
+  #downloadBtn:disabled { background: #a9b6d8; cursor: not-allowed; }
+  .hint { font-size: 0.78rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  #previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+  }
+  .preview-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .preview-item .frame {
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    line-height: 0;
+  }
+  .preview-item .frame:hover { outline: 2px solid var(--accent); }
+  .preview-item canvas { display: block; }
+  #zoomArea {
+    margin-top: 18px;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  #zoomArea .preview-item canvas { image-rendering: pixelated; }
+  .empty { color: var(--muted); font-size: 0.9rem; }
+  #status { margin-top: 10px; font-size: 0.85rem; color: var(--muted); min-height: 1.2em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>画像 → ICO 変換ツール</h1>
+  <p>PNG / JPG / WebP / GIF / SVG などをマルチサイズのICOファイルに変換します。処理はすべてブラウザ内で完結し、画像は外部に送信されません。</p>
+</header>
+
+<main>
+  <!-- 左カラム：入力・設定 -->
+  <section>
+    <div class="card">
+      <h2>1. 画像を選択</h2>
+      <div id="dropzone">
+        ここに画像をドラッグ＆ドロップ<br>
+        または <strong>クリックして選択</strong><br>
+        <small>（Ctrl+V で貼り付けも可）</small>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" hidden>
+      <img id="sourcePreview" class="checker" alt="元画像">
+      <div id="sourceInfo"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>2. 設定</h2>
+
+      <div class="field">
+        <label class="title">出力サイズ</label>
+        <div class="sizes" id="sizeList"></div>
+        <div class="row" style="margin-top:8px;">
+          <button class="small-btn" data-preset="recommended">推奨</button>
+          <button class="small-btn" data-preset="favicon">favicon向け</button>
+          <button class="small-btn" data-preset="all">全選択</button>
+          <button class="small-btn" data-preset="none">解除</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="title">正方形でない画像の扱い</label>
+        <select id="fitMode">
+          <option value="contain">全体を収める（余白は背景）</option>
+          <option value="cover">中央を切り抜く</option>
+          <option value="stretch">引き伸ばす</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="title">余白: <span id="paddingVal">0</span>%</label>
+        <div class="row">
+          <input type="range" id="padding" min="0" max="30" value="0">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="title">角丸: <span id="radiusVal">0</span>%</label>
+        <div class="row">
+          <input type="range" id="radius" min="0" max="50" value="0">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="title">背景</label>
+        <div class="row">
+          <label><input type="radio" name="bg" value="transparent" checked> 透明</label>
+          <label><input type="radio" name="bg" value="color"> 色</label>
+          <input type="color" id="bgColor" value="#ffffff">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="title">互換性</label>
+        <label class="row">
+          <input type="checkbox" id="bmpSmall" checked>
+          48px以下をBMP形式で格納（古いWindows/アプリ向け）
+        </label>
+        <div class="hint">オフにすると全サイズをPNG圧縮で格納し、ファイルサイズが小さくなります（Windows Vista以降は対応）。</div>
+      </div>
+
+      <div class="field">
+        <label class="title">ファイル名</label>
+        <input type="text" id="fileName" value="icon">
+      </div>
+
+      <button id="downloadBtn" disabled>ICOファイルをダウンロード</button>
+      <div id="status"></div>
+    </div>
+  </section>
+
+  <!-- 右カラム：プレビュー -->
+  <section>
+    <div class="card">
+      <h2>プレビュー（実寸）</h2>
+      <div id="previews"><p class="empty">画像を読み込むとここに各サイズのプレビューが表示されます。</p></div>
+      <div class="hint">各アイコンをクリックすると、そのサイズのPNGを個別にダウンロードできます。</div>
+
+      <h2 style="margin-top:22px;">小サイズ拡大表示（ドット確認用・4倍）</h2>
+      <div id="zoomArea"><p class="empty">―</p></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const ALL_SIZES = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
+  const PRESETS = {
+    recommended: [16, 24, 32, 48, 64, 128, 256],
+    favicon: [16, 32, 48],
+    all: ALL_SIZES,
+    none: []
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const state = {
+    img: null,
+    canvases: [],
+    renderTimer: null
+  };
+
+  // ---------- UI初期化 ----------
+  const sizeList = $("sizeList");
+  ALL_SIZES.forEach((s) => {
+    const label = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = String(s);
+    cb.checked = PRESETS.recommended.includes(s);
+    cb.addEventListener("change", scheduleRender);
+    label.appendChild(cb);
+    label.append(` ${s}×${s}`);
+    sizeList.appendChild(label);
+  });
+
+  document.querySelectorAll("[data-preset]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const preset = PRESETS[btn.dataset.preset];
+      sizeList.querySelectorAll("input").forEach((cb) => {
+        cb.checked = preset.includes(Number(cb.value));
+      });
+      scheduleRender();
+    });
+  });
+
+  ["fitMode", "padding", "radius", "bgColor", "bmpSmall"].forEach((id) => {
+    $(id).addEventListener("input", scheduleRender);
+  });
+  document.querySelectorAll('input[name="bg"]').forEach((r) => {
+    r.addEventListener("change", scheduleRender);
+  });
+  $("bgColor").addEventListener("input", () => {
+    document.querySelector('input[name="bg"][value="color"]').checked = true;
+  });
+
+  // ---------- 画像の読み込み ----------
+  const dropzone = $("dropzone");
+  const fileInput = $("fileInput");
+
+  dropzone.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) loadFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("over");
+  });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("over"));
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("over");
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  });
+
+  window.addEventListener("paste", (e) => {
+    const items = e.clipboardData ? e.clipboardData.items : [];
+    for (const item of items) {
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          loadFile(file);
+          break;
+        }
+      }
+    }
+  });
+
+  function loadFile(file) {
+    if (!file.type.startsWith("image/")) {
+      alert("画像ファイルを選択してください。");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      state.img = img;
+      const w = img.naturalWidth || 512;
+      const h = img.naturalHeight || 512;
+      const baseName = (file.name || "icon").replace(/\.[^.]+$/, "") || "icon";
+      $("fileName").value = baseName;
+      $("sourcePreview").src = url;
+      $("sourcePreview").style.display = "block";
+      $("sourceInfo").textContent =
+        `${file.name || "クリップボード画像"}（${w}×${h}px, ${formatBytes(file.size)}）`;
+      if (Math.max(w, h) < 256) {
+        $("sourceInfo").textContent += " ※256px未満のため大きいサイズはぼやける可能性があります";
+      }
+      render();
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      alert("画像を読み込めませんでした。");
+    };
+    img.src = url;
+  }
+
+  // ---------- 設定取得 ----------
+  function getSelectedSizes() {
+    return Array.from(sizeList.querySelectorAll("input:checked"))
+      .map((cb) => Number(cb.value))
+      .sort((a, b) => a - b);
+  }
+
+  function getOptions() {
+    const bgMode = document.querySelector('input[name="bg"]:checked').value;
+    return {
+      fit: $("fitMode").value,
+      padding: Number($("padding").value),
+      radius: Number($("radius").value),
+      bgColor: bgMode === "color" ? $("bgColor").value : null,
+      bmpSmall: $("bmpSmall").checked
+    };
+  }
+
+  // ---------- 描画 ----------
+  function scheduleRender() {
+    $("paddingVal").textContent = $("padding").value;
+    $("radiusVal").textContent = $("radius").value;
+    clearTimeout(state.renderTimer);
+    state.renderTimer = setTimeout(render, 60);
+  }
+
+  function render() {
+    const previews = $("previews");
+    const zoomArea = $("zoomArea");
+    const sizes = getSelectedSizes();
+
+    if (!state.img) return;
+
+    const opt = getOptions();
+    state.canvases = sizes.map((s) => makeIcon(state.img, s, opt));
+
+    previews.innerHTML = "";
+    zoomArea.innerHTML = "";
+
+    if (sizes.length === 0) {
+      previews.innerHTML = '<p class="empty">出力サイズを1つ以上選択してください。</p>';
+      zoomArea.innerHTML = '<p class="empty">―</p>';
+      $("downloadBtn").disabled = true;
+      return;
+    }
+
+    state.canvases.forEach((c) => {
+      const item = document.createElement("div");
+      item.className = "preview-item";
+      const frame = document.createElement("div");
+      frame.className = "frame checker";
+      frame.title = `${c.width}×${c.height} をPNGでダウンロード`;
+      frame.appendChild(c);
+      frame.addEventListener("click", async () => {
+        const blob = await canvasToBlob(c);
+        downloadBlob(blob, `${getBaseName()}_${c.width}.png`);
+      });
+      item.appendChild(frame);
+      item.append(`${c.width}×${c.height}`);
+      previews.appendChild(item);
+
+      if (c.width <= 48) {
+        const zItem = document.createElement("div");
+        zItem.className = "preview-item";
+        const zFrame = document.createElement("div");
+        zFrame.className = "frame checker";
+        const z = document.createElement("canvas");
+        z.width = c.width;
+        z.height = c.height;
+        z.getContext("2d").drawImage(c, 0, 0);
+        z.style.width = `${c.width * 4}px`;
+        z.style.height = `${c.height * 4}px`;
+        zFrame.appendChild(z);
+        zItem.appendChild(zFrame);
+        zItem.append(`${c.width}px ×4`);
+        zoomArea.appendChild(zItem);
+      }
+    });
+
+    if (!zoomArea.children.length) {
+      zoomArea.innerHTML = '<p class="empty">48px以下のサイズが選択されていません。</p>';
+    }
+
+    $("downloadBtn").disabled = false;
+    updateFavicon();
+  }
+
+  function makeIcon(img, size, opt) {
+    const c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext("2d");
+
+    const iw = img.naturalWidth || 512;
+    const ih = img.naturalHeight || 512;
+    const pad = (size * opt.padding) / 100;
+    const area = Math.max(1, size - pad * 2);
+
+    let sx = 0, sy = 0, sw = iw, sh = ih;
+    let dx = pad, dy = pad, dw = area, dh = area;
+
+    if (opt.fit === "contain") {
+      const scale = Math.min(area / iw, area / ih);
+      dw = iw * scale;
+      dh = ih * scale;
+      dx = (size - dw) / 2;
+      dy = (size - dh) / 2;
+    } else if (opt.fit === "cover") {
+      const scale = Math.max(area / iw, area / ih);
+      sw = area / scale;
+      sh = area / scale;
+      sx = (iw - sw) / 2;
+      sy = (ih - sh) / 2;
+    }
+
+    ctx.save();
+    const r = (size * opt.radius) / 100;
+    if (r > 0) {
+      roundRectPath(ctx, 0, 0, size, size, r);
+      ctx.clip();
+    }
+    if (opt.bgColor) {
+      ctx.fillStyle = opt.bgColor;
+      ctx.fillRect(0, 0, size, size);
+    }
+    drawHighQuality(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh);
+    ctx.restore();
+    return c;
+  }
+
+  // 段階的に1/2ずつ縮小してジャギーやモアレを抑える
+  function drawHighQuality(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) {
+    let cw = Math.max(1, Math.round(sw));
+    let ch = Math.max(1, Math.round(sh));
+    let cur = document.createElement("canvas");
+    cur.width = cw;
+    cur.height = ch;
+    cur.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, cw, ch);
+
+    const tw = Math.max(1, Math.round(dw));
+    const th = Math.max(1, Math.round(dh));
+
+    while (cw / 2 >= tw && ch / 2 >= th) {
+      const nw = Math.max(1, Math.floor(cw / 2));
+      const nh = Math.max(1, Math.floor(ch / 2));
+      const t = document.createElement("canvas");
+      t.width = nw;
+      t.height = nh;
+      const tctx = t.getContext("2d");
+      tctx.imageSmoothingEnabled = true;
+      tctx.imageSmoothingQuality = "high";
+      tctx.drawImage(cur, 0, 0, cw, ch, 0, 0, nw, nh);
+      cur = t;
+      cw = nw;
+      ch = nh;
+    }
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(cur, 0, 0, cw, ch, dx, dy, dw, dh);
+  }
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  // ---------- ICOエンコード ----------
+  function canvasToBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG変換に失敗しました"))), "image/png");
+    });
+  }
+
+  // 32bit BGRA の DIB（ICO内BMP形式）を生成
+  function encodeBmp(canvas) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const pixels = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+
+    const headerSize = 40;
+    const xorSize = w * h * 4;
+    const andRowBytes = Math.ceil(w / 32) * 4;
+    const andSize = andRowBytes * h;
+    const buf = new Uint8Array(headerSize + xorSize + andSize);
+    const dv = new DataView(buf.buffer);
+
+    dv.setUint32(0, headerSize, true);      // biSize
+    dv.setInt32(4, w, true);                // biWidth
+    dv.setInt32(8, h * 2, true);            // biHeight（XOR + AND の2倍）
+    dv.setUint16(12, 1, true);              // biPlanes
+    dv.setUint16(14, 32, true);             // biBitCount
+    dv.setUint32(16, 0, true);              // biCompression = BI_RGB
+    dv.setUint32(20, xorSize + andSize, true); // biSizeImage
+
+    // ピクセルデータ（下から上へ）
+    let p = headerSize;
+    for (let y = h - 1; y >= 0; y--) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        buf[p++] = pixels[i + 2]; // B
+        buf[p++] = pixels[i + 1]; // G
+        buf[p++] = pixels[i];     // R
+        buf[p++] = pixels[i + 3]; // A
+      }
+    }
+
+    // ANDマスク（完全透明ピクセルを1に）
+    const andStart = headerSize + xorSize;
+    for (let y = h - 1, row = 0; y >= 0; y--, row++) {
+      for (let x = 0; x < w; x++) {
+        const a = pixels[(y * w + x) * 4 + 3];
+        if (a === 0) {
+          const byteIndex = andStart + row * andRowBytes + (x >> 3);
+          buf[byteIndex] |= 0x80 >> (x & 7);
+        }
+      }
+    }
+    return buf;
+  }
+
+  async function buildIco(canvases, bmpSmall) {
+    const images = [];
+    for (const c of canvases) {
+      let data;
+      if (bmpSmall && c.width <= 48) {
+        data = encodeBmp(c);
+      } else {
+        const blob = await canvasToBlob(c);
+        data = new Uint8Array(await blob.arrayBuffer());
+      }
+      images.push({ size: c.width, data });
+    }
+
+    const count = images.length;
+    const headerSize = 6 + 16 * count;
+    const total = headerSize + images.reduce((sum, im) => sum + im.data.length, 0);
+    const buf = new Uint8Array(total);
+    const dv = new DataView(buf.buffer);
+
+    // ICONDIR
+    dv.setUint16(0, 0, true);     // reserved
+    dv.setUint16(2, 1, true);     // type: 1 = ICO
+    dv.setUint16(4, count, true); // 画像数
+
+    // ICONDIRENTRY × count
+    let offset = headerSize;
+    images.forEach((im, i) => {
+      const p = 6 + 16 * i;
+      buf[p] = im.size >= 256 ? 0 : im.size;     // 幅（256は0）
+      buf[p + 1] = im.size >= 256 ? 0 : im.size; // 高さ（256は0）
+      buf[p + 2] = 0;                            // パレット色数
+      buf[p + 3] = 0;                            // reserved
+      dv.setUint16(p + 4, 1, true);              // planes
+      dv.setUint16(p + 6, 32, true);             // bit count
+      dv.setUint32(p + 8, im.data.length, true); // データサイズ
+      dv.setUint32(p + 12, offset, true);        // データ位置
+      buf.set(im.data, offset);
+      offset += im.data.length;
+    });
+
+    return new Blob([buf], { type: "image/x-icon" });
+  }
+
+  // ---------- ダウンロード ----------
+  function getBaseName() {
+    const name = $("fileName").value.trim().replace(/[\\/:*?"<>|]/g, "_");
+    return name || "icon";
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  $("downloadBtn").addEventListener("click", async () => {
+    if (!state.canvases.length) return;
+    const btn = $("downloadBtn");
+    btn.disabled = true;
+    $("status").textContent = "生成中...";
+    try {
+      const blob = await buildIco(state.canvases, getOptions().bmpSmall);
+      downloadBlob(blob, `${getBaseName()}.ico`);
+      const sizes = state.canvases.map((c) => c.width).join(", ");
+      $("status").textContent = `完了：${formatBytes(blob.size)}（収録サイズ: ${sizes}）`;
+    } catch (err) {
+      console.error(err);
+      $("status").textContent = "エラー: " + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // タブのfaviconに生成結果を反映（簡易プレビュー）
+  let faviconUrl = null;
+  async function updateFavicon() {
+    try {
+      const small = state.canvases.filter((c) => c.width <= 64);
+      if (!small.length) return;
+      const blob = await buildIco(small, false);
+      if (faviconUrl) URL.revokeObjectURL(faviconUrl);
+      faviconUrl = URL.createObjectURL(blob);
+      $("favicon").href = faviconUrl;
+    } catch (e) {
+      // favicon更新失敗は無視
+    }
+  }
+
+  function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+  }
+})();
+</script>
+</body>
+</html>
